@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Karaoke Music Page — Vài Câu Nói...</title>
+<style>
+  :root{
+    --bg1:#0f1724; --bg2:#0b1b2a; --accent:#ffd86b; --glow:#7ef0ff;
+  }
+  html,body{height:100%;margin:0;font-family:Inter, "Helvetica Neue", Arial; background: radial-gradient(circle at 10% 10%, rgba(255,216,107,0.04), transparent 10%), linear-gradient(180deg,var(--bg1),var(--bg2)); color:#fff; overflow:hidden}
+  .wrap{max-width:1100px;margin:18px auto;padding:18px;position:relative;z-index:20}
+  header{display:flex;gap:18px;align-items:center}
+  h1{font-size:20px;margin:0;font-weight:700}
+  .sub{opacity:0.8;font-size:13px}
+
+  /* media area */
+  .media-box{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  .viewer{
+    width:360px;height:360px;border-radius:12px;overflow:hidden;position:relative;border:2px solid rgba(255,255,255,0.06);
+    background:linear-gradient(135deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2));
+    box-shadow:0 8px 40px rgba(0,0,0,0.6);
+  }
+
+  video, canvas#audioCanvas{
+    width:100%;height:100%;display:block;
+    object-fit:cover;
+  }
+
+  /* disc overlay */
+  .disc {
+    position:absolute; right:12px; bottom:12px; width:96px; height:96px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #c6c6c6 0%, #222 60%);
+    border:6px solid rgba(255,255,255,0.06); display:flex;align-items:center;justify-content:center;
+    transform-origin:center center; box-shadow:0 8px 30px rgba(0,0,0,0.6);
+  }
+  .disc .dot{width:16px;height:16px;border-radius:50%;background:#111;border:4px solid #fff}
+
+  .disc.playing{animation:spin 4s linear infinite}
+  @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+  /* controls */
+  .controls{flex:1;min-width:300px}
+  .controls .player{
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.25));
+    padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);
+  }
+  .controls audio, .controls video{width:100%;outline:none;border-radius:8px}
+  .meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+  .btn{background:linear-gradient(90deg,var(--accent),#ffb36b);border:none;padding:8px 12px;border-radius:8px;color:#111;font-weight:700;cursor:pointer}
+  .small{font-size:13px;opacity:0.9}
+
+  /* lyrics area */
+  .karaoke{
+    margin-top:18px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.18));
+    padding:18px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);position:relative;overflow:hidden;
+  }
+  .lyrics-line{font-size:30px;line-height:1.2;margin:6px 0;white-space:pre-wrap}
+  .lyrics-line span{
+    opacity:0;display:inline-block;transform:translateY(18px) scale(0.98);
+    color:#fff; text-shadow:0 0 8px rgba(0,0,0,0.6);
+    transition: transform .25s cubic-bezier(.2,.9,.25,1), opacity .25s;
+  }
+  .lyrics-line span.revealed{opacity:1;transform:translateY(0) scale(1); color:var(--accent); text-shadow:0 0 18px rgba(255,216,107,0.25)}
+  .lyrics-line.center{font-size:36px;text-align:center}
+
+  /* floating music notes */
+  .notes{position:fixed;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:10}
+  .note{position:absolute;font-size:20px;color:rgba(255,255,255,0.9);filter:drop-shadow(0 4px 10px rgba(0,0,0,0.6));opacity:0;transform:translateY(0);animation:noteFloat linear forwards}
+  @keyframes noteFloat{
+    0%{opacity:0; transform: translateY(60vh) scale(.6) rotate(-10deg)}
+    10%{opacity:1}
+    100%{opacity:0; transform: translateY(-20vh) scale(1.3) rotate(20deg)}
+  }
+
+  /* equalizer bars */
+  .eq-wrap{display:flex;gap:6px;align-items:flex-end;justify-content:center;margin-top:12px;z-index:12}
+  .eq-bar{width:8px;background:linear-gradient(180deg,var(--glow), rgba(255,255,255,0.15));border-radius:4px;opacity:0.92;height:8px;transition:height .08s linear}
+
+  /* background decorative animated gradient */
+  .bg-anim{
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    background: radial-gradient(600px circle at 10% 10%, rgba(126,240,255,0.06), transparent 8%),
+                radial-gradient(400px circle at 90% 80%, rgba(255,216,107,0.04), transparent 6%);
+    mix-blend-mode:screen;filter:blur(20px);
+    animation: drift 12s linear infinite;
+  }
+  @keyframes drift{0%{transform:translateY(0)}50%{transform:translateY(20px)}100%{transform:translateY(0)}}
+
+  /* responsive */
+  @media (max-width:880px){
+    .media-box{flex-direction:column;align-items:center}
+    .viewer{width:320px;height:320px}
+  }
+  footer{opacity:0.7;text-align:center;margin-top:12px;font-size:13px}
+</style>
+</head>
+<body>
+  <div class="bg-anim"></div>
+
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>🎶 Karaoke — Vài Câu Nói Có Khiến Người Thay Đổi</h1>
+        <div class="sub">Chèn file MP4 (ưu tiên) hoặc MP3 vào repo; thay tên file bên dưới.</div>
+      </div>
+    </header>
+
+    <div class="media-box">
+      <div class="viewer">
+        <!-- Nếu bạn có MP4, đặt tên file đúng và nó sẽ hiển thị; nếu không có, video tag ẩn và audio dùng. -->
+        <video id="media" playsinline crossorigin="anonymous" preload="metadata" style="display:block"></video>
+        <!-- canvas dành để vẽ waveform/equalizer -->
+        <canvas id="audioCanvas" style="position:absolute;left:0;top:0;pointer-events:none"></canvas>
+
+        <div class="disc" id="disc"><div class="dot"></div></div>
+      </div>
+
+      <div class="controls">
+        <div class="player">
+          <!-- fallback audio element (hidden if video used) -->
+          <audio id="audio" controls crossorigin="anonymous" preload="metadata"></audio>
+
+          <div class="meta">
+            <div class="small">Source: <span id="mediaName">vaicaunoicokhiennguoithaydoi.mp4</span></div>
+            <div>
+              <button id="playBtn" class="btn">Play / Pause</button>
+            </div>
+          </div>
+
+          <div class="eq-wrap" id="eqWrap" aria-hidden="true">
+            <!-- bars created by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="karaoke" id="karaokeBox">
+      <!-- lyrics inserted by JS -->
+      <div id="lyricsContainer" class="lyrics-line center">Chuẩn bị...</div>
+    </div>
+
+    <footer>Up file media vào repo — nếu là MP4, đổi `MEDIA_FILE` trong code / tên file sao cho khớp.</footer>
+  </div>
+
+  <div class="notes" id="notes"></div>
+
+<script>
+/*  -----------------  CÁCH DÙNG  -----------------
+  1) Đổi tên file media (mp4 hoặc mp3) ở biến MEDIA_FILE bên dưới.
+  2) Upload file media vào cùng thư mục với index.html trong repo.
+  3) Bật GitHub Pages -> mở trang.
+  --------------------------------------------- */
+
+const MEDIA_FILE = 'vaicaunoicokhiennguoithaydoi.mp4'; // <-- đổi tên file ở đây nếu cần
+const PREFERRED_TYPE = MEDIA_FILE.toLowerCase().endsWith('.mp4') ? 'video' : 'audio';
+
+// --- Lyrics data: mỗi dòng có time (giây) và text
+const lyricData = [
+  { time: 0.0, text: "Có phải vì anh vẫn thường vô ý" },
+  { time: 6.0, text: "Chẳng suy nghĩ vài lần khiến em u sầu" },
+  { time: 12.5, text: "Có phải vì anh trót vài câu nói" },
+  { time: 18.5, text: "Chạm vào nơi niềm đau mà người luôn chôn giấu" },
+  { time: 26.0, text: "Vài câu nói có khiến người thay đổi?" },
+  { time: 31.0, text: "Có khiến bờ môi ấm êm?" },
+  { time: 35.5, text: "Nay chỉ còn trong nỗi nhớ" }
+];
+
+// ----------------- setup media elements -----------------
+const mediaEl = document.getElementById('media'); // video element (also used if mp3 by hiding)
+const audioEl = document.getElementById('audio'); // audio element fallback
+const playBtn = document.getElementById('playBtn');
+const mediaName = document.getElementById('mediaName');
+const disc = document.getElementById('disc');
+
+mediaName.textContent = MEDIA_FILE;
+
+// decide which to use
+let playerEl;
+if(PREFERRED_TYPE === 'video'){
+  mediaEl.style.display = 'block';
+  audioEl.style.display = 'none';
+  mediaEl.src = MEDIA_FILE;
+  playerEl = mediaEl;
+} else {
+  audioEl.style.display = 'block';
+  mediaEl.style.display = 'none';
+  audioEl.src = MEDIA_FILE;
+  playerEl = audioEl;
+}
+
+// set canvas to overlay viewer
+const canvas = document.getElementById('audioCanvas');
+function resizeCanvas(){
+  const rect = document.querySelector('.viewer').getBoundingClientRect();
+  canvas.width = Math.floor(rect.width);
+  canvas.height = Math.floor(rect.height);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// -------------- WebAudio analyzer for visuals --------------
+let audioCtx, analyser, sourceNode;
+function setupAudioContext(){
+  if(audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.85;
+
+  sourceNode = audioCtx.createMediaElementSource(playerEl);
+  sourceNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+}
+playerEl.addEventListener('play', ()=>{ try{ setupAudioContext(); audioCtx.resume();}catch(e){} disc.classList.add('playing'); });
+playerEl.addEventListener('pause', ()=>disc.classList.remove('playing'));
+playerEl.addEventListener('ended', ()=>disc.classList.remove('playing'));
+
+// draw waveform and bars
+const ctx = canvas.getContext('2d');
+function drawVisuals(){
+  if(!analyser) {
+    requestAnimationFrame(drawVisuals);
+    return;
+  }
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  const bufferLength = analyser.fftSize;
+  const dataArray = new Uint8Array(bufferLength);
+  analyser.getByteTimeDomainData(dataArray);
+
+  // waveform
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(126,240,255,0.9)';
+  ctx.beginPath();
+  const sliceWidth = w / bufferLength;
+  let x = 0;
+  for (let i = 0; i < bufferLength; i++) {
+    const v = dataArray[i] / 128.0; // 0..2
+    const y = v * h/3;
+    if (i === 0) ctx.moveTo(x, y + h/3);
+    else ctx.lineTo(x, y + h/3);
+    x += sliceWidth;
+  }
+  ctx.stroke();
+
+  // frequency bars
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freqData);
+  const barCount = 40;
+  const step = Math.floor(freqData.length / barCount);
+  const barWidth = Math.max(2, Math.floor(w / (barCount * 1.5)));
+  let barX = (w - (barCount * (barWidth + 4))) / 2;
+  for(let i=0;i<barCount;i++){
+    let sum = 0;
+    for(let j=0;j<step;j++) sum += freqData[i*step + j];
+    const avg = sum/step;
+    const barH = Math.max(4, (avg/255) * (h/2));
+    const g = ctx.createLinearGradient(barX, h, barX, h - barH);
+    g.addColorStop(0, 'rgba(255,216,107,0.08)');
+    g.addColorStop(1, 'rgba(126,240,255,0.9)');
+    ctx.fillStyle = g;
+    ctx.fillRect(barX, h - barH, barWidth, barH);
+    barX += barWidth + 4;
+  }
+
+  requestAnimationFrame(drawVisuals);
+}
+drawVisuals();
+
+// ---------------- lyrics rendering (per-word reveal) ----------------
+const lyricsContainer = document.getElementById('lyricsContainer');
+let currentLineIndex = -1;
+let revealTimers = [];
+
+function renderEmpty(){
+  lyricsContainer.innerHTML = '<div class="lyrics-line center">Nhấn Play để bắt đầu...</div>';
+}
+renderEmpty();
+
+function showLine(index){
+  // clear timers
+  revealTimers.forEach(t=>clearTimeout(t));
+  revealTimers = [];
+  lyricsContainer.innerHTML = '';
+
+  const line = lyricData[index];
+  if(!line) return;
+  const nextTime = (index < lyricData.length-1) ? lyricData[index+1].time : (line.time + 6);
+  const duration = Math.max(0.8, nextTime - line.time); // seconds to reveal whole line
+  const words = line.text.split(/\s+/).filter(Boolean);
+  const container = document.createElement('div');
+  container.className = 'lyrics-line center';
+  words.forEach((w,i)=>{
+    const sp = document.createElement('span');
+    sp.textContent = w + (i===words.length-1 ? '' : ' ');
+    // compute per-word delay based on i (distribute across duration)
+    const per = duration / Math.max(1, words.length);
+    sp.style.transitionDelay = (i * per * 0.9) + 's';
+    container.appendChild(sp);
+    // schedule reveal to synchronize precisely with current playback time
+    // we will add class .revealed after (i*per) seconds from now
+    const timer = setTimeout(()=> sp.classList.add('revealed'), Math.max(0, (playerEl.currentTime ? 0 : 0)));
+    revealTimers.push(timer);
+  });
+  lyricsContainer.appendChild(container);
+
+  // Better: reveal dynamically using setTimeout relative to exact time
+  // Cancel previously scheduled reveals (done above) and schedule proper ones:
+  revealTimers.forEach(t=>clearTimeout(t));
+  revealTimers = [];
+  const now = playerEl.currentTime;
+  const startAt = lyricData[index].time;
+  for(let i=0;i<words.length;i++){
+    const per = duration / Math.max(1, words.length);
+    const revealAt = startAt + i * per;
+    const delayMs = Math.max(0, (revealAt - now) * 1000);
+    const span = container.children[i];
+    const t = setTimeout(()=> span.classList.add('revealed'), delayMs);
+    revealTimers.push(t);
+  }
+}
+
+// update loop: check current playback time and show appropriate line
+playerEl.addEventListener('timeupdate', ()=>{
+  const t = playerEl.currentTime;
+  for(let i=0;i<lyricData.length;i++){
+    const start = lyricData[i].time;
+    const end = (i < lyricData.length -1) ? lyricData[i+1].time : start + 10;
+    if(t >= start - 0.05 && t < end - 0.05){
+      if(currentLineIndex !== i){
+        currentLineIndex = i;
+        showLine(i);
+      }
+      break;
+    }
+  }
+});
+
+// when seeking or paused, remove scheduled reveals or adjust
+playerEl.addEventListener('seeked', ()=>{
+  // re-run showLine for current line to sync
+  if(currentLineIndex >=0) showLine(currentLineIndex);
+});
+playerEl.addEventListener('pause', ()=>{/* nothing extra */});
+
+// ---------------- floating notes ----------------
+const notesContainer = document.getElementById('notes');
+function spawnNote(){
+  const n = document.createElement('div');
+  n.className = 'note';
+  n.innerText = Math.random() > 0.5 ? '♪' : '♫';
+  const size = 16 + Math.random()*20;
+  n.style.fontSize = size + 'px';
+  n.style.left = Math.random() * (window.innerWidth - 60) + 'px';
+  n.style.top = (window.innerHeight + 20) + 'px';
+  const dur = 4500 + Math.random()*3000;
+  n.style.animationDuration = (dur/1000) + 's';
+  notesContainer.appendChild(n);
+  setTimeout(()=> n.remove(), dur + 200);
+}
+setInterval(spawnNote, 700);
+
+// ---------------- play/pause button and interactions ----------------
+playBtn.addEventListener('click', ()=>{
+  if(playerEl.paused) playerEl.play();
+  else playerEl.pause();
+  // ensure audio context resumes on user gesture
+  try{ if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }catch(e){}
+});
+
+// allow spacebar to toggle play
+document.addEventListener('keydown', (e)=>{ if(e.code === 'Space'){ e.preventDefault(); if(playerEl.paused) playerEl.play(); else playerEl.pause(); } });
+
+// ---------------- small eq element bars (DOM) ----------------
+const eqWrap = document.getElementById('eqWrap');
+const EQ_BARS = 10;
+for(let i=0;i<EQ_BARS;i++){
+  const b = document.createElement('div'); b.className = 'eq-bar';
+  b.style.height = '12px';
+  eqWrap.appendChild(b);
+}
+function updateDOMBars(){
+  if(!analyser) { requestAnimationFrame(updateDOMBars); return; }
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freqData);
+  const bars = Array.from(document.querySelectorAll('.eq-bar'));
+  for(let i=0;i<bars.length;i++){
+    const idx = Math.floor(i * freqData.length / bars.length);
+    const val = freqData[idx] / 255;
+    bars[i].style.height = Math.max(8, val * 120) + 'px';
+  }
+  requestAnimationFrame(updateDOMBars);
+}
+updateDOMBars();
+
+// ensure media element is ready to play cross-origin for analyzer
+playerEl.crossOrigin = "anonymous";
+
+// ----------------- helpful error / ready messages -----------------
+playerEl.addEventListener('loadedmetadata', ()=>{
+  renderEmpty();
+});
+
+// if media fails to load show message
+playerEl.addEventListener('error', (e)=>{
+  console.error(e);
+  lyricsContainer.innerHTML = '<div class="lyrics-line center">Không thể tải file media. Kiểm tra tên file và đường dẫn (MEDIA_FILE).</div>';
+});
+
+// On page load, try to auto-play (browsers may block until user gesture)
+window.addEventListener('load', ()=>{ /* nothing forced */ });
+
+</script>
+</body>
+</html>
